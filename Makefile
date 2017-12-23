@@ -2,7 +2,7 @@
 all:  socket_server_udp 
 
 CCFLAGS = -c -g -O -D_GNU_SOURCE -Wall
-LDFLAGS = -Wl,-v -Wl,-Map=a.map -Wl,--cref -Wl,-t
+LDFLAGS = -Wl,-v -Wl,-Map=a.map -Wl,--cref -Wl,-t -lpthread
 ARFLAGS = -rcs
 
 CC = gcc
