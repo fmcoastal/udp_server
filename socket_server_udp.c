@@ -257,7 +257,7 @@ zzzzzzzzzzzzzzzzzzzzzzzzzzzzz
             (unsigned)ntohs(adr.sin_port),
             dgram);
         printf("Enter format string :");
-        fflush(stdout);i
+        fflush(stdout);
 #endif
 
 
@@ -292,8 +292,9 @@ int g_dump_received_packet = 0;
 int
 main(int argc,char **argv) {
     int option          = 0;
-    int SendTime        = 0;
+#ifdef ECHO_INPUT_PACKET
     int EchoInputPacket = 1;
+#endif
     int z;
     char srvr_addr[32] ;
     int  srvr_port ;
@@ -301,12 +302,15 @@ main(int argc,char **argv) {
     socklen_t  len_inet;                /* length  */
     int s;                         /* Socket */
     char dgram[512];         /* Recv buffer */
+#ifdef SEND_TIME_TO_CLIENT
+    int SendTime        = 0;
     char dtfmt[512];   /* Date/Time Result */
     time_t td;    /* Current Time and Date */
+#endif
     struct tm tm;      /* Date time values */
 // for time stamps
    time_t rawtime ;  
-   struct tm * timeinfo;
+   struct tm * timeinfo = &tm;
 
 #ifdef SPAWN_THREADS
     int i;
@@ -405,6 +409,7 @@ main(int argc,char **argv) {
     db.fd     = 0;  // Read/Write File Handle.
     db.socket = s;  // pass the socket handle to the THreads
 
+    i = 0;
     while(i < 2)
     {
         err = pthread_create(&(g_tid[i]), NULL, &WorkerThread, &db);
@@ -475,7 +480,7 @@ main(int argc,char **argv) {
 
 
 
-#if 0
+#ifdef SEND_TIME_TO_CLIENT
         if(SendTime != 0 )
         {     
         /*
@@ -507,7 +512,7 @@ main(int argc,char **argv) {
             bail("sendto(2)");
         }
 #endif   
-#if 0
+#ifdef ECHO_INPUT_PACKET
      if ( EchoInputPacket != 0)
      {
         /*
