@@ -1,1 +1,10 @@
-./socket_server_udp -s 172.16.1.10 -p 50020
+#!/bin/bash
+
+##### set the interface up
+# sudo ip link set dev p5p1 up
+
+
+###  Assign IP address to interface
+# sudo ip a add 192.168.2.10/24  dev p5p1
+
+./socket_server_udp -s 192.168.2.10 -p 50020
