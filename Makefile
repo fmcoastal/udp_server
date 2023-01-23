@@ -5,9 +5,14 @@ CCFLAGS = -c -g -O -D_GNU_SOURCE -Wall
 LDFLAGS = -Wl,-v -Wl,-Map=a.map -Wl,--cref -Wl,-t -lpthread -pthread
 ARFLAGS = -rcs
 
-CC = gcc
-LD = gcc
-AR = ar
+TOOL_PATH=/home/fsmith/depot/arm_socket/marvell-tools-1026.0/bin/aarch64-marvell-linux-gnu-
+
+
+CC = $(TOOL_PATH)gcc
+LD = $(TOOL_PATH)gcc
+AR = $(TOOL_PATH)ar
+
+
 
 
 socket_server_udp: socket_server_udp.o

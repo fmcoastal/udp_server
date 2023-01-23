@@ -13,12 +13,24 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
-#undef  ENABLE_DUMP_BUFFER
+#undef  ENABLE_DUMP_BUFFER     // prints raw contents of packet received
 
-#define SPAWN_THREADS
+#undef SEND_TIME_TO_CLIENT     // will send this machines time of day as
+                               // part of what happens when a packet is 
+                               // recieived
+#undef ECHO_INPUT_PACKET       // echo input pact back to sender
+#undef RUN_INPUT_AS_LINUX_CMD  // execute incomming packet as a Linux Cmd 
+                               // Line argument  
+
+
+
+
+#define SPAWN_THREADS          // used to check compile problems
+
+////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////
 
 #ifdef SPAWN_THREADS
-
 #include <pthread.h>  // for thread Items
 
 // the struct below is passed to the two threads.
@@ -30,11 +42,12 @@ typedef struct
 
 }datablock_t;
 
+pthread_t g_tid[2];             // posix thread array
+
 #endif
 
 
 struct sockaddr_in g_adr_clnt;/* AF_INET */
-
 #ifdef ENABLE_DUMP_BUFFER
 static void ffPrintBuff(uint8_t * buffer, int64_t bufferSize,uint8_t * Address,char * title);
 #endif
@@ -43,8 +56,6 @@ int  ffReadFileToBuffer(char * filename, char **buf,int *  bufsz);
 int g_verbose = 0;
 #define VERBOSE(x) (g_verbose >= x)
 #define VERBOSE_WAI    0x01
-
-
 
 void print_usage(void)
 {
@@ -71,19 +82,10 @@ void print_usage(void)
 }
 
 
-#ifdef SPAWN_THREADS
-pthread_t g_tid[2];             // posix thread array
-
-
-#endif
-
-
-
 
 void help(void)
 {
     printf("socket_server_udp   <Server_IP>\n");
-
 }
 
 
@@ -100,8 +102,6 @@ bail(const char *on_what) {
     help();
     exit(1);
 } 
-
-
 
 
 // need to use the escape key to send special charactes
@@ -192,8 +192,6 @@ int DoConsole(datablock_t * pdb)
 
 
 #ifdef SPAWN_THREADS
-
-
 // TX THREAD
 int tx(void* arg)
 {
@@ -319,8 +317,6 @@ main(int argc,char **argv) {
 
 // Initialize Default Values
     memset((void*)&db,0,sizeof(datablock_t));
-
-
 #endif
 
 // set the defaults
@@ -473,12 +469,47 @@ main(int argc,char **argv) {
                                ,(unsigned)ntohs(g_adr_clnt.sin_port)
                                ,dgram);  
 
+#ifdef RUN_INPUT_AS_LINUX_CMD
 
+//   system() 
+// int status = system("gzip foo");
+{
+  FILE *fp;
+  char path[1035];
 
+  /* Open the command for reading. */
+//  fp = popen("/bin/ls /etc/", "r");
+  fp = popen( dgram , "r");
+  if (fp == NULL) {
+    printf("Failed to run command\n" );
+    exit(1);
+  }
+
+  /* Read the output a line at a time - output it. */
+  while (fgets(path, sizeof(path), fp) != NULL) {
     
+        // print results locally
+        printf("%s", path);
+        /*
+         * Send the formatted result back to the
+         * client program:
+         */
+        z = sendto(s,        /* Socket to send result */
+            path,           /* The datagram result to snd */
+            strlen(path),   /* The datagram lngth */
+            0,               /* Flags: no options */
+            (struct sockaddr *)&g_adr_clnt,/* addr */
+            len_inet);  /* Client address length */
+        if ( z < 0 )
+            bail("sendto(3)");
 
+        }  // end while
 
+        /* close */
+        pclose(fp);
 
+}
+#endif
 
 #ifdef SEND_TIME_TO_CLIENT
         if(SendTime != 0 )
