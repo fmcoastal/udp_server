@@ -12,7 +12,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-
+#include <net/if.h>
 
 
 #undef ENABLE_DUMP_BUFFER      // prints raw contents of packet received
@@ -24,8 +24,7 @@
 #undef RUN_INPUT_AS_LINUX_CMD  // execute incomming packet as a Linux Cmd 
                                // Line argument  
 
-
-
+#define  BIND_TO_NETDEV 
 
 #define SPAWN_THREADS          // used to check compile problems
 
@@ -59,14 +58,17 @@ int g_verbose = 0;
 #define VERBOSE(x) (g_verbose >= x)
 #define VERBOSE_WAI    0x01
 
+
+
 void print_usage(void)
 {
    printf("UDP server - listen for a packet and maybe respond??\n");
-   printf("-s w,x,y,z    Server IP Address\n");
-   printf("-p <port #>   Server port\n");
-//   printf("-b a.b.c.d    Bind IP Address  \n");
+   printf("-p <port #>   Server UDP port to listen on \n");
+   printf("-s w,x,y,z    Server IP Address (local ip address to bind to \n");
 //   printf("-c <port>     Bind port  \n");
 //   printf("-f <Data File>  Hex File containing Packet Data\n");
+
+
 //   printf("-l <count>      Number of times to send Packet Data\n");
    printf("-i            Listen for incomming data\n");
 //   printf("-r            Wait for Response\n");
@@ -90,7 +92,6 @@ void help(void)
     printf("socket_server_udp   <Server_IP>\n");
 }
 
-
 /*
  * This function reports the error and
  * exits back to the shell:
@@ -104,7 +105,6 @@ bail(const char *on_what) {
     help();
     exit(1);
 } 
-
 
 // need to use the escape key to send special charactes
 // this is because getchar does not return Ctrl Sequences
@@ -312,12 +312,11 @@ main(int argc,char **argv) {
    time_t       rawtime ;  
    struct tm    *timeinfo = &tm;
 
-
-
      
 #ifdef BIND_TO_NETDEV 
-    int   flag_bind_to_local_interface = 0;    // flag not to bind to local interface
-    const char* local_interface_name = "eth0"; // Replace with your desired interface
+    struct ifreq ifr;
+    int          flag_bind_to_local_netdev;  // flag?  bind to local interface (eth0,..)
+    char         bind_to_netdev_name[32];    // Replace with your desired netdev
 #endif
 
 #ifdef SPAWN_THREADS
@@ -336,23 +335,29 @@ main(int argc,char **argv) {
      srvr_udp_port          = 9090;    // Default Server Port
      g_dump_received_packet = 0;       // default to not dump rx packet
 
-  while ((option = getopt(argc, argv,"dhp:s:")) != -1) {
+#ifdef BIND_TO_NETDEV 
+     strcpy (bind_to_netdev_name, "eth0"); // default netdev name 
+     flag_bind_to_local_netdev = 0;    // flag not to bind to local interface
+#endif
+
+
+  while ((option = getopt(argc, argv,"dp:s:n:h")) != -1) {
          switch (option) {
-              case 'd' : g_dump_received_packet=1 ;  // configure to dump Rx Packet
+              case 'd' : 
+                  g_dump_received_packet=1 ;  // configure to dump Rx Packet
                   break;
+
 /*              case 'm' : SoReUseAddr=1 ;                // configure to bind w/ SO_REUSEADDR
                   break;
               case 'r' : WaitForResponse=1 ;              // send only(0) or wait for response (1)
                   break;
 */ 
-              case 'p' : srvr_udp_port = atoi(optarg);    // Server IP Port
+              case 'p' : 
+                  srvr_udp_port = atoi(optarg);           // Server UDP Port
                   break;
-              case 's' : strcpy(srvr_addr,optarg);        // Server Ip Address
+              case 's' : strcpy(srvr_addr,optarg);        // Server Ip  Address
                   break;
-#ifdef BIND_TO_IP_ADDR
-              case 'i' : strcpy(bind_to_ipaddr,optarg);   // local ip address to bind to
-                  break;
-#endif
+
 /*              case 'c' : adr_bind_port = atoi(optarg);  // Bind Port
                   break;
               case 'f' : strcpy(SndFileName,optarg);      // CLI or pkt data from File
@@ -361,63 +366,50 @@ main(int argc,char **argv) {
                   break;
 */
 #ifdef BIND_TO_NETDEV 
-              case 'n' : strcpy(bind_to_netdev,optarg);   // local netdev to bind to 
-                         flag_bind_to_local_interface = 1;
+              case 'n': 
+                  strcpy(bind_to_netdev_name ,optarg);   // local netdev to bind to 
+                  flag_bind_to_local_netdev = 1;
                   break;
 #endif 
-
-
               case 'h' :                               // Print Help
               default:
                   print_usage();
                   exit(EXIT_FAILURE);
-         }
-     }
+         } // end switch option   
+      
+     }  // end while 
+
+
+
      printf("Command Line Arguments:\n");
      printf("  %16s Server IP:Port\n",srvr_addr);
      printf("              %4d Server Port\n",srvr_udp_port);
 
-// do we need Bind Address???
 
     /*
      * Create a UDP socket to use:
      */
-    s = socket(AF_INET,SOCK_DGRAM,0);
+    s = socket(AF_INET,SOCK_DGRAM,0);    // SOC_STREAM for TCP
     if ( s == -1 )
         bail("socket()");
 
 #ifdef  BIND_TO_NETDEV
-// AI: in c how do you bind to a network interface
-
-// In C, you can bind a socket to a specific network interface using the 
-// SO_BINDTODEVICE socket option with setsockopt(). This allows you to 
-// restrict a socket's communication to a particular interface, rather 
-// than allowing it to bind to any available interface.
-//
-// Here's how to do it: Create a socket.
-
-
-    int sockfd = socket(AF_INET, SOCK_STREAM, 0); // Or SOCK_DGRAM for UDP
-    if (sockfd < 0) {
-        perror("socket");
-        // Handle error
-    }
-
+    if ( flag_bind_to_local_netdev != 0 )
+    {
+        printf("   bind server to Netdev: %s \n",bind_to_netdev_name);
 // Prepare the interface name.
 // You need the name of the network interface you want to bind to (e.g., 
 // "eth0", "wlan0", "enp0s3").
 
-
-    const char* interface_name = "eth0"; // Replace with your desired interface
+//    const char* bind_to_netdev_name = "eth0"; // Replace with your desired interface
 
 // Use SO_BINDTODEVICE with setsockopt().
 
 
-    struct ifreq ifr;
     memset(&ifr, 0, sizeof(ifr));
-    strncpy(ifr.ifr_name, interface_name, IFNAMSIZ - 1);
+    strncpy(ifr.ifr_name, bind_to_netdev_name, IFNAMSIZ - 1);
 
-    if (setsockopt(sockfd, SOL_SOCKET, SO_BINDTODEVICE, &ifr, sizeof(ifr)) < 0) {
+    if (setsockopt( s , SOL_SOCKET, SO_BINDTODEVICE, &ifr, sizeof(ifr)) < 0) {
         perror("setsockopt SO_BINDTODEVICE");
         // Handle error
     }
@@ -432,18 +424,6 @@ main(int argc,char **argv) {
 //  structure. If you want to bind to any IP address on that interface, 
 //  you can use INADDR_ANY.
 
-
-    struct sockaddr_in serv_addr;
-    memset(&serv_addr, 0, sizeof(serv_addr));
-    serv_addr.sin_family = AF_INET;
-    serv_addr.sin_addr.s_addr = htonl(INADDR_ANY); // Or a specific IP on the interface
-    serv_addr.sin_port = htons(8080); // Your desired port
-
-    if (bind(sockfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0) {
-        perror("bind");
-        // Handle error
-    }
-
 // Important Notes:
 //   Permissions: Binding to a specific device often requires elevated
 //     privileges (e.g., root or CAP_NET_RAW capability), especially 
@@ -452,56 +432,42 @@ main(int argc,char **argv) {
 //   IPv6: For IPv6, you would use AF_INET6 and sockaddr_in6, and the 
 //     sin6_scope_id field can be used with the interface index 
 //     obtained from if_nametoindex().
-
+   }
 #endif
 
-
-
-#ifdef BIND_TO_IP_ADDR
-//AI: in C how do you bind to an IP address
+    /*
+     * Create a socket address, for use
+     * with bind(2):
+     */
+    memset(&adr_inet,0,sizeof adr_inet);
+    adr_inet.sin_family = AF_INET;
+    adr_inet.sin_port = htons(srvr_udp_port);
     
-// In C, to bind a socket to a specific IP address, you use the bind() 
-//   function. This function associates a local address (IP address and 
-//   port number) with an unbound socket.
-// Here's a breakdown of the process: Include necessary headers.
+    adr_inet.sin_addr.s_addr = inet_addr(srvr_addr); //s_addr is the ip address you will bind to . 
 
+                                       // To bind to all available IP addresses on the host:
+                                       // server_addr.sin_addr.s_addr = htonl(INADDR_ANY); 
 
-//    #include <sys/socket.h> // For socket, bind, etc.
-//    #include <netinet/in.h> // For sockaddr_in, INADDR_ANY, etc.
-//    #include <arpa/inet.h>  // For inet_addr
-//    #include <stdio.h>      // For perror
-//    #include <stdlib.h>     // For exit
+    if ( adr_inet.sin_addr.s_addr == INADDR_NONE )
+        bail("bad address.");
 
-// Create a socket.
+    len_inet = sizeof adr_inet;
 
+    printf("Server running UDP on %s port %u;\n",
+        inet_ntoa(adr_inet.sin_addr),
+        (unsigned)ntohs(adr_inet.sin_port));
 
-    int sockfd = socket(AF_INET, SOCK_STREAM, 0); // For TCP socket
-    if (sockfd < 0) {
-        perror("socket creation failed");
-        exit(EXIT_FAILURE);
-    }
+    /*
+     * Bind a address to our socket, so that
+     * client programs can contact this
+     * server:
+     */
+    z = bind(s,
+        (struct sockaddr *)&adr_inet,
+        len_inet);
+    if ( z == -1 )
+        bail("bind()");
 
-// Prepare the sockaddr_in structure: This structure holds the address 
-// information.
-
-    struct sockaddr_in server_addr;
-    server_addr.sin_family = AF_INET; // IPv4
-    server_addr.sin_port = htons(8080); // Port number (e.g., 8080), convert to network byte order
-    
-    // To bind to a specific IP address:
-    server_addr.sin_addr.s_addr = inet_addr("192.168.1.100"); // Replace with your desired IP
-    
-    // To bind to all available IP addresses on the host:
-    // server_addr.sin_addr.s_addr = htonl(INADDR_ANY); 
-
-// Call the bind() function.
-
-
-    if (bind(sockfd, (const struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
-        perror("bind failed");
-        exit(EXIT_FAILURE);
-    }
-// Explanation:
 //
 //       socket(AF_INET, SOCK_STREAM, 0): Creates a TCP socket for IPv4 communication.
 //
@@ -524,38 +490,6 @@ main(int argc,char **argv) {
 // After successfully binding, you can proceed with other socket operations
 //             like listen() for a server or connect() for a client.
 
-#endif
-    /*
-     * Create a socket address, for use
-     * with bind(2):
-     */
-    memset(&adr_inet,0,sizeof adr_inet);
-    adr_inet.sin_family = AF_INET;
-    adr_inet.sin_port = htons(srvr_udp_port);
-    adr_inet.sin_addr.s_addr =
-        inet_addr(srvr_addr);
-
-    if ( adr_inet.sin_addr.s_addr == INADDR_NONE )
-        bail("bad address.");
-
-    len_inet = sizeof adr_inet;
-
-    printf("Server running UDP on %s port %u;\n",
-        inet_ntoa(adr_inet.sin_addr),
-        (unsigned)ntohs(adr_inet.sin_port));
-
-
-
-    /*
-     * Bind a address to our socket, so that
-     * client programs can contact this
-     * server:
-     */
-    z = bind(s,
-        (struct sockaddr *)&adr_inet,
-        len_inet);
-    if ( z == -1 )
-        bail("bind()");
 
 
 #ifdef SPAWN_THREADS
