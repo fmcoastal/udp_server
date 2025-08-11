@@ -13,7 +13,9 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
-#undef  ENABLE_DUMP_BUFFER     // prints raw contents of packet received
+
+
+#undef ENABLE_DUMP_BUFFER      // prints raw contents of packet received
 
 #undef SEND_TIME_TO_CLIENT     // will send this machines time of day as
                                // part of what happens when a packet is 
@@ -289,30 +291,38 @@ int g_dump_received_packet = 0;
 
 int
 main(int argc,char **argv) {
-    int option          = 0;
+    int         option          = 0;
 #ifdef ECHO_INPUT_PACKET
-    int EchoInputPacket = 1;
+    int         EchoInputPacket = 1;
 #endif
-    int z;
-    char srvr_addr[32] ;
-    int  srvr_port ;
-    struct sockaddr_in adr_inet;/* AF_INET */
-    socklen_t  len_inet;                /* length  */
-    int s;                         /* Socket */
-    char dgram[512];         /* Recv buffer */
+    int         z;
+    char        srvr_addr[32] ;
+    int         srvr_udp_port ;
+    struct      sockaddr_in adr_inet; /* AF_INET */
+    socklen_t   len_inet;             /* length  */
+    int         s;                    /* Socket */
+    char        dgram[512];           /* Recv buffer */
 #ifdef SEND_TIME_TO_CLIENT
-    int SendTime        = 0;
-    char dtfmt[512];   /* Date/Time Result */
-    time_t td;    /* Current Time and Date */
+    int         SendTime        = 0;
+    char        dtfmt[512];           /* Date/Time Result */
+    time_t      td;                   /* Current Time and Date */
 #endif
-    struct tm tm;      /* Date time values */
+    struct tm   tm;                   /* Date time values */
 // for time stamps
-   time_t rawtime ;  
-   struct tm * timeinfo = &tm;
+   time_t       rawtime ;  
+   struct tm    *timeinfo = &tm;
+
+
+
+     
+#ifdef BIND_TO_NETDEV 
+    int   flag_bind_to_local_interface = 0;    // flag not to bind to local interface
+    const char* local_interface_name = "eth0"; // Replace with your desired interface
+#endif
 
 #ifdef SPAWN_THREADS
-    int i;
-    int err;
+    int         i;
+    int         err;
     datablock_t db;
 
 // Initialize Default Values
@@ -323,30 +333,41 @@ main(int argc,char **argv) {
 
      /* Use default address: */
      strcpy(srvr_addr, "127.0.0.23");  // Default Server Address
-     srvr_port = 9090;             // Default Server Port
+     srvr_udp_port          = 9090;    // Default Server Port
      g_dump_received_packet = 0;       // default to not dump rx packet
 
   while ((option = getopt(argc, argv,"dhp:s:")) != -1) {
          switch (option) {
               case 'd' : g_dump_received_packet=1 ;  // configure to dump Rx Packet
                   break;
-/*              case 'm' : SoReUseAddr=1 ;     // configure to bind w/ SO_REUSEADDR
+/*              case 'm' : SoReUseAddr=1 ;                // configure to bind w/ SO_REUSEADDR
                   break;
-              case 'r' : WaitForResponse=1 ; // send only(0) or wait for response (1)
+              case 'r' : WaitForResponse=1 ;              // send only(0) or wait for response (1)
                   break;
-*/              case 'p' : srvr_port = atoi(optarg); // Server IP Port
+*/ 
+              case 'p' : srvr_udp_port = atoi(optarg);    // Server IP Port
                   break;
-              case 's' : strcpy(srvr_addr,optarg);     // Server Ip Address
+              case 's' : strcpy(srvr_addr,optarg);        // Server Ip Address
                   break;
-/*              case 'b' : strcpy(bind_addr,optarg);     // Interface to Bind To
+#ifdef BIND_TO_IP_ADDR
+              case 'i' : strcpy(bind_to_ipaddr,optarg);   // local ip address to bind to
                   break;
-              case 'c' : adr_bind_port = atoi(optarg);   // Bind Port
+#endif
+/*              case 'c' : adr_bind_port = atoi(optarg);  // Bind Port
                   break;
-              case 'f' : strcpy(SndFileName,optarg);    // CLI or pkt data from File
+              case 'f' : strcpy(SndFileName,optarg);      // CLI or pkt data from File
                   break;
-              case 'l' : g_SndPktDataLoop = atoi(optarg);// #of times to send File Data
+              case 'l' : g_SndPktDataLoop = atoi(optarg); // #of times to send File Data
                   break;
-*/              case 'h' :                               // Print Help
+*/
+#ifdef BIND_TO_NETDEV 
+              case 'n' : strcpy(bind_to_netdev,optarg);   // local netdev to bind to 
+                         flag_bind_to_local_interface = 1;
+                  break;
+#endif 
+
+
+              case 'h' :                               // Print Help
               default:
                   print_usage();
                   exit(EXIT_FAILURE);
@@ -354,7 +375,7 @@ main(int argc,char **argv) {
      }
      printf("Command Line Arguments:\n");
      printf("  %16s Server IP:Port\n",srvr_addr);
-     printf("              %4d Server Port\n",srvr_port);
+     printf("              %4d Server Port\n",srvr_udp_port);
 
 // do we need Bind Address???
 
@@ -445,11 +466,11 @@ main(int argc,char **argv) {
 // Here's a breakdown of the process: Include necessary headers.
 
 
-    #include <sys/socket.h> // For socket, bind, etc.
-    #include <netinet/in.h> // For sockaddr_in, INADDR_ANY, etc.
-    #include <arpa/inet.h>  // For inet_addr
-    #include <stdio.h>      // For perror
-    #include <stdlib.h>     // For exit
+//    #include <sys/socket.h> // For socket, bind, etc.
+//    #include <netinet/in.h> // For sockaddr_in, INADDR_ANY, etc.
+//    #include <arpa/inet.h>  // For inet_addr
+//    #include <stdio.h>      // For perror
+//    #include <stdlib.h>     // For exit
 
 // Create a socket.
 
@@ -510,7 +531,7 @@ main(int argc,char **argv) {
      */
     memset(&adr_inet,0,sizeof adr_inet);
     adr_inet.sin_family = AF_INET;
-    adr_inet.sin_port = htons(srvr_port);
+    adr_inet.sin_port = htons(srvr_udp_port);
     adr_inet.sin_addr.s_addr =
         inet_addr(srvr_addr);
 
